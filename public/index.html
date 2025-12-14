@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MPOOL</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="auth.css">
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="sakura-container" id="sakura-container"></div>
+        <script>
+            // Sakura Generator
+            function createSakura() {
+                const container = document.getElementById('sakura-container');
+                const petal = document.createElement('div');
+                petal.classList.add('sakura');
+
+                // Randomize properties
+                const size = Math.random() * 10 + 5 + 'px';
+                petal.style.width = size;
+                petal.style.height = size;
+                petal.style.left = Math.random() * 100 + 'vw';
+                petal.style.animationDuration = Math.random() * 5 + 5 + 's';
+                petal.style.animationDelay = Math.random() * 5 + 's';
+
+                container.appendChild(petal);
+
+                // Cleanup
+                setTimeout(() => {
+                    petal.remove();
+                }, 10000);
+            }
+            setInterval(createSakura, 300);
+        </script>
+        <!-- Profile Page (Hub & Spoke Layout) -->
+        <section id="profile-page" class="page">
+
+            <!-- 1. MAIN MENU VIEW -->
+            <div id="profile-menu-view" class="profile-subview active">
+                <header class="page-header">
+                    <button class="back-btn small" data-target="home-page"><i class="ph ph-arrow-left"></i></button>
+                    <h2>My Profile</h2>
+                    <div style="width: 40px;"></div>
+                </header>
+
+                <div class="profile-subview-content centered">
+                    <div class="profile-hub-grid">
+                        <button class="hub-card" onclick="showProfileSubView('identity')">
+                            <div class="hub-icon"><i class="ph ph-fingerprint"></i></div>
+                            <h3>Identity</h3>
+                            <p>Stats & Account</p>
+                        </button>
+
+                        <button class="hub-card" onclick="showProfileSubView('wallet')">
+                            <div class="hub-icon"><i class="ph ph-wallet"></i></div>
+                            <h3>Wallet</h3>
+                            <p>Balance & Transactions</p>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. IDENTITY SUB-VIEW -->
+            <div id="view-identity" class="profile-subview hidden">
+                <header class="page-header">
+                    <button class="back-btn small" onclick="showProfileSubView('menu')"><i
+                            class="ph ph-arrow-left"></i></button>
+                    <h2>Identity</h2>
+                    <div style="width: 40px;"></div>
+                </header>
+
+                <div class="profile-subview-content">
+                    <div class="identity-card glass-panel">
+                        <div class="avatar-large"><i class="ph ph-user"></i></div>
+                        <h2 id="profile-username">Player</h2>
+                        <p class="id-badge">Verified Player</p>
+
+                        <div class="stats-row">
+                            <div class="stat-item">
+                                <span class="label">Wins</span>
+                                <span class="value" id="profile-wins">0</span>
+                            </div>
+                            <div class="stat-divider"></div>
+                            <div class="stat-item">
+                                <span class="label">Losses</span>
+                                <span class="value" id="profile-losses">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-list">
+                        <button id="btn-logout" class="list-btn">
+                            <i class="ph ph-sign-out"></i>
+                            <span>Logout</span>
+                            <i class="ph ph-caret-right"></i>
+                        </button>
+                        <button id="btn-delete-account" class="list-btn danger">
+                            <i class="ph ph-trash"></i>
+                            <span>Delete Account</span>
+                            <i class="ph ph-caret-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. WALLET SUB-VIEW -->
+            <div id="view-wallet" class="profile-subview hidden">
+                <header class="page-header">
+                    <button class="back-btn small" onclick="showProfileSubView('menu')"><i
+                            class="ph ph-arrow-left"></i></button>
+                    <h2>Wallet</h2>
+                    <div style="width: 40px;"></div>
+                </header>
+
+                <div class="profile-subview-content">
+                    <!-- Premium Balance Card -->
+                    <div class="wallet-dashboard-card">
+                        <div class="card-top">
+                            <span class="card-label">Total Balance</span>
+                            <i class="ph ph-wallet icon-watermark"></i>
+                        </div>
+                        <div class="balance-display">
+                            <span class="currency">KES</span>
+                            <span class="amount" id="unique-wallet-balance">0</span>
+                        </div>
+                        <div class="card-bottom">
+                            <span class="mpesa-label">M-Pesa Linked</span>
+                            <span class="mpesa-number" id="wallet-phone">07XX...</span>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="wallet-actions-row">
+                        <button id="btn-topup-menu" class="action-pill green">
+                            <i class="ph ph-plus"></i> Top Up
+                        </button>
+                        <button id="btn-withdraw-menu" class="action-pill red">
+                            <i class="ph ph-arrow-up-right"></i> Withdraw
+                        </button>
+                    </div>
+
+                    <!-- Transaction History Teaser/Link -->
+                    <div class="section-title">History</div>
+                    <button id="btn-transactions" class="history-link-card">
+                        <div class="icon-box"><i class="ph ph-receipt"></i></div>
+                        <div class="text-box">
+                            <h4>Transactions</h4>
+                            <p>View recent activity</p>
+                        </div>
+                        <i class="ph ph-caret-right bg-icon"></i>
+                    </button>
+                </div>
+            </div>
+
+        </section>
+        <!-- Home Page -->
+        <section id="home-page" class="page active">
+            <div class="logo-container">
+                <img src="logo.png" alt="MPOOL Logo"
+                    style="width: 150px; height: 150px; object-fit: cover; border-radius: 50%; box-shadow: 0 10px 20px rgba(0,0,0,0.5); margin-bottom: 10px;">
+                <div class="wallet-display">Balance: <span id="home-balance">100</span> <i class="ph ph-coins"></i>
+                </div>
+            </div>
+            <div class="menu-container">
+                <button class="menu-btn" id="btn-profile">
+                    <i class="ph ph-user"></i> Profile
+                </button>
+                <button class="menu-btn" id="btn-tournament">
+                    <i class="ph ph-trophy"></i> Tournament
+                </button>
+                <button class="menu-btn primary" id="btn-play-menu">
+                    <i class="ph ph-game-controller"></i> Play 1 v 1
+                </button>
+            </div>
+
+            <!-- Stake Modal -->
+            <div id="stake-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h2>Place Your Bet</h2>
+                    <p>Min: 20 | Wallet: <span id="modal-balance">100</span></p>
+                    <input type="number" id="stake-input" value="20" min="20" step="10">
+                    <p id="stake-error" class="error-text hidden">Invalid Stake</p>
+                    <div class="modal-actions">
+                        <button id="btn-cancel-stake" class="danger">Cancel</button>
+                        <button id="btn-confirm-stake" class="primary">Play</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Shared Modals (Global) -->
+        <!-- Top Up Modal -->
+        <div id="topup-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2><i class="ph ph-arrow-up"></i> Top Up</h2>
+                <p>Enter amount to receive M-Pesa Prompt</p>
+                <input type="number" id="topup-amount" placeholder="Amount (e.g. 50)" min="10">
+                <p id="topup-message" class="error-text hidden">Processing...</p>
+                <div class="modal-actions">
+                    <button id="btn-cancel-topup" class="danger">Cancel</button>
+                    <button id="btn-confirm-topup" class="primary">Pay Now</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Withdraw Modal -->
+        <div id="withdraw-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2><i class="ph ph-arrow-down"></i> Withdraw</h2>
+                <p>Enter amount to withdraw to your phone</p>
+                <input type="number" id="withdraw-amount" placeholder="Amount" min="50">
+                <p id="withdraw-message" class="error-text hidden">Processing...</p>
+                <div class="modal-actions">
+                    <button id="btn-cancel-withdraw" class="danger">Cancel</button>
+                    <button id="btn-confirm-withdraw" class="primary">Withdraw</button>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Tournament Page -->
+        <section id="tournament-page" class="page">
+            <header class="page-header">
+                <button class="back-btn small" data-target="home-page"><i class="ph ph-arrow-left"></i></button>
+                <h2>Tournament</h2>
+                <div style="width: 40px;"></div>
+            </header>
+            <div class="tournament-list">
+                <div class="tournament-card" data-fee="20">
+                    <div class="card-header"><i class="ph ph-medal" style="color: #cd7f32;"></i> Beginner Cup</div>
+                    <div class="card-body">
+                        <p class="prize"><i class="ph ph-trophy"></i> 2,304</p>
+                        <p class="fee"><i class="ph ph-ticket"></i> Entry: 20</p>
+                        <button class="btn-join">Join <i class="ph ph-arrow-right"></i></button>
+                        <p class="status">Waiting for players...</p>
+                    </div>
+                </div>
+                <div class="tournament-card" data-fee="50">
+                    <div class="card-header"><i class="ph ph-medal" style="color: silver;"></i> Amateur League</div>
+                    <div class="card-body">
+                        <p class="prize"><i class="ph ph-trophy"></i> 5,760</p>
+                        <p class="fee"><i class="ph ph-ticket"></i> Entry: 50</p>
+                        <button class="btn-join">Join <i class="ph ph-arrow-right"></i></button>
+                        <p class="status">Waiting for players...</p>
+                    </div>
+                </div>
+                <div class="tournament-card" data-fee="100">
+                    <div class="card-header"><i class="ph ph-medal" style="color: gold;"></i> Pro Circuit</div>
+                    <div class="card-body">
+                        <p class="prize"><i class="ph ph-trophy"></i> 11,520</p>
+                        <p class="fee"><i class="ph ph-ticket"></i> Entry: 100</p>
+                        <button class="btn-join">Join <i class="ph ph-arrow-right"></i></button>
+                        <p class="status">Waiting for players...</p>
+                    </div>
+                </div>
+                <div class="tournament-card" data-fee="200">
+                    <div class="card-header"><i class="ph ph-crown" style="color: #e5b80b;"></i> Elite Series</div>
+                    <div class="card-body">
+                        <p class="prize"><i class="ph ph-trophy"></i> 23,040</p>
+                        <p class="fee"><i class="ph ph-ticket"></i> Entry: 200</p>
+                        <button class="btn-join">Join <i class="ph ph-arrow-right"></i></button>
+                        <p class="status">Waiting for players...</p>
+                    </div>
+                </div>
+                <div class="tournament-card" data-fee="500">
+                    <div class="card-header"><i class="ph ph-star" style="color: #b9f2ff;"></i> Masters Championship
+                    </div>
+                    <div class="card-body">
+                        <p class="prize"><i class="ph ph-trophy"></i> 57,600</p>
+                        <p class="fee"><i class="ph ph-ticket"></i> Entry: 500</p>
+                        <button class="btn-join">Join <i class="ph ph-arrow-right"></i></button>
+                        <p class="status">Waiting for players...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Game Page -->
+        <section id="game-page" class="page">
+            <div id="score-board">
+                <div id="p1-score" class="player-score active">P1</div>
+                <div id="pot-display">Pot: <span id="game-pot">0</span> <i class="ph ph-coins"></i></div>
+                <div id="p2-score" class="player-score">P2</div>
+            </div>
+
+            <!-- Multiplayer Opponent Info -->
+            <div id="opponent-info" class="opponent-info hidden">
+                <span class="vs-label">VS</span>
+                <span id="opponent-name" class="opponent-name">Opponent</span>
+                <span id="turn-indicator" class="turn-indicator"></span>
+            </div>
+
+            <button id="pause-btn" class="icon-btn"><i class="ph ph-pause"></i></button>
+
+            <div id="game-container">
+                <canvas id="gameCanvas"></canvas>
+                <div id="power-bar">
+                    <div id="power-fill"></div>
+                </div>
+
+                <div id="message-area" class="hidden">
+                    <div id="game-message">Player 1 Wins!</div>
+                    <div id="prize-message" style="margin-bottom: 20px; font-size: 1.5rem; color: gold;"></div>
+                    <button id="reset-btn">Play Again</button>
+                    <button class="back-btn" data-target="home-page" style="margin-top: 10px;">Exit to Menu</button>
+                </div>
+            </div>
+
+            <!-- Pause Modal -->
+            <div id="pause-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h2>Game Paused</h2>
+                    <p>Quit current game?<br><span style="font-size: 0.8em; color: #ff4444;">You will lose your
+                            stake!</span></p>
+                    <div class="modal-actions">
+                        <button id="resume-btn" class="primary">Resume</button>
+                        <button id="quit-btn" class="danger">Quit</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Auth Container (Replaces Login Modal) -->
+        <div id="auth-container" class="modal">
+            <div class="auth-box glass-panel">
+                <div class="auth-header">
+                    <img src="logo.png" alt="MPOOL" class="auth-logo">
+                    <h2>Welcome Back</h2>
+                    <p>Enter your details to continue</p>
+                </div>
+
+                <div class="auth-tabs">
+                    <button class="tab-btn active" data-tab="login">Sign In</button>
+                    <button class="tab-btn" data-tab="register">Register</button>
+                </div>
+
+                <div class="tab-content active" id="tab-login">
+                    <div class="input-group">
+                        <i class="ph ph-user-circle"></i>
+                        <input type="text" id="login-identifier" placeholder="Phone or Username">
+                        <label for="login-identifier">Phone or Username</label>
+                    </div>
+                    <div class="input-group">
+                        <i class="ph ph-lock"></i>
+                        <input type="password" id="login-pass" placeholder="Password">
+                        <label for="login-pass">Password</label>
+                    </div>
+                    <div class="auth-options">
+                        <label class="checkbox-container">Remember me
+                            <input type="checkbox" checked>
+                            <span class="checkmark"></span>
+                        </label>
+                        <a href="#" class="forgot-link">Forgot Password?</a>
+                    </div>
+                    <button id="btn-login" class="primary btn-block">Sign In <i class="ph ph-arrow-right"></i></button>
+                </div>
+
+                <div class="tab-content" id="tab-register">
+                    <div class="input-group">
+                        <i class="ph ph-user"></i>
+                        <input type="text" id="reg-username" placeholder="Username">
+                        <label>Username</label>
+                        <small style="color: #aaa; font-size: 0.8rem; display: block; margin-top: 5px;">* Username is
+                            permanent & unique</small>
+                    </div>
+                    <div class="input-group">
+                        <i class="ph ph-phone"></i>
+                        <input type="text" id="reg-phone" placeholder="Phone Number">
+                        <label>Phone Number</label>
+                    </div>
+                    <div class="input-group">
+                        <i class="ph ph-lock"></i>
+                        <input type="password" id="reg-pass" placeholder="Password">
+                        <label>Password</label>
+                    </div>
+                    <button id="btn-register" class="primary btn-block">Create Account</button>
+                </div>
+
+
+
+                <p id="auth-error" class="error-text hidden">Error logging in</p>
+            </div>
+        </div>
+
+        <!-- Notification Toast -->
+        <div id="toast" class="hidden">Balance Updated!</div>
+
+    </div>
+    <script src="game.js"></script>
+    <script src="test-register.js"></script>
+    <style>
+        /* Paybill Box Styles */
+        .paybill-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+            margin: 20px 0;
+            text-align: left;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .paybill-box h3 {
+            color: #0f0;
+            margin-bottom: 5px;
+        }
+
+        .paybill-box .detail {
+            font-size: 0.9em;
+            margin: 5px 0;
+            color: #ddd;
+        }
+
+        .paybill-box .number {
+            font-family: monospace;
+            font-size: 1.2em;
+            color: white;
+            letter-spacing: 1px;
+        }
+
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c8c45;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            z-index: 1000;
+            animation: fadeIn 0.3s;
+        }
+    </style>
+</body>
+
+</html>
