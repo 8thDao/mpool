@@ -12,25 +12,71 @@ const DB_NAME = process.env.DB_NAME || 'mpool';
 function getConnectionString() {
     // Option 1: Full URI provided (auto-encode password if needed)
     if (process.env.MONGODB_URI) {
-        const uri = process.env.MONGODB_URI;
+        let uri = process.env.MONGODB_URI;
+
         // Extract and encode password from URI to handle special characters
         const match = uri.match(/^(mongodb(?:\+srv)?:\/\/)([^:]+):([^@]+)@(.+)$/);
         if (match) {
             const [, protocol, user, password, rest] = match;
             const encodedPassword = encodeURIComponent(password);
-            return `${protocol}${user}:${encodedPassword}@${rest}`;
+            uri = `${protocol}${user}:${encodedPassword}@${rest}`;
         }
+
+        // Convert mongodb+srv to standard mongodb format for Railway compatibility
+        // This avoids DNS SRV lookup issues on some hosting platforms
+        if (uri.startsWith('mongodb+srv://')) {
+            const srvMatch = uri.match(/^mongodb\+srv:\/\/([^:]+):([^@]+)@([^\/]+)(.*)$/);
+            if (srvMatch) {
+                const [, srvUser, srvPass, srvHost, srvRest] = srvMatch;
+                // Extract cluster name from host (e.g., "cluster0" from "cluster0.zeymwlz.mongodb.net")
+                const hostParts = srvHost.split('.');
+                const clusterName = hostParts[0];
+                const region = hostParts.slice(1).join('.');
+
+                // Build standard connection with shard nodes
+                const shards = [
+                    `${clusterName}-shard-00-00.${region}:27017`,
+                    `${clusterName}-shard-00-01.${region}:27017`,
+                    `${clusterName}-shard-00-02.${region}:27017`
+                ];
+
+                // Parse query string or use defaults
+                let queryString = srvRest.includes('?') ? srvRest.substring(srvRest.indexOf('?') + 1) : '';
+                const dbName = srvRest.includes('/') && srvRest.indexOf('/') < srvRest.indexOf('?')
+                    ? srvRest.substring(srvRest.indexOf('/') + 1, srvRest.indexOf('?') > 0 ? srvRest.indexOf('?') : undefined)
+                    : '';
+
+                // Add required options for Atlas
+                const baseOptions = 'ssl=true&authSource=admin&retryWrites=true&w=majority';
+                queryString = queryString ? `${baseOptions}&${queryString}` : baseOptions;
+
+                uri = `mongodb://${srvUser}:${srvPass}@${shards.join(',')}/${dbName}?${queryString}`;
+                console.log('[MongoDB] Converted SRV to standard connection format');
+            }
+        }
+
         return uri;
     }
 
-    // Option 2: Separate components (auto-encoded)
+    // Option 2: Separate components (auto-encoded) - use standard format
     const user = process.env.MONGODB_USER;
     const pass = process.env.MONGODB_PASS;
     const host = process.env.MONGODB_HOST;
 
     if (user && pass && host) {
         const encodedPass = encodeURIComponent(pass);
-        return `mongodb+srv://${user}:${encodedPass}@${host}/${DB_NAME}?retryWrites=true&w=majority`;
+        // Convert to standard format for Railway compatibility
+        const hostParts = host.split('.');
+        const clusterName = hostParts[0];
+        const region = hostParts.slice(1).join('.');
+
+        const shards = [
+            `${clusterName}-shard-00-00.${region}:27017`,
+            `${clusterName}-shard-00-01.${region}:27017`,
+            `${clusterName}-shard-00-02.${region}:27017`
+        ];
+
+        return `mongodb://${user}:${encodedPass}@${shards.join(',')}/${DB_NAME}?ssl=true&authSource=admin&retryWrites=true&w=majority`;
     }
 
     // Fallback to localhost
