@@ -24,6 +24,18 @@ class Matchmaking {
     joinQueue(player, stake) {
         const { socketId, phone, username } = player;
 
+        console.log(`[Matchmaking] joinQueue called: ${username} (${phone}), stake: ${stake}`);
+        console.log(`[Matchmaking] Current queues:`, JSON.stringify(Object.keys(this.queues).map(k => ({ stake: k, count: this.queues[k].length }))));
+
+        // Check if player is already in a queue (prevent duplicate entries)
+        for (const queueStake in this.queues) {
+            const existingIdx = this.queues[queueStake].findIndex(p => p.phone === phone);
+            if (existingIdx !== -1) {
+                console.log(`[Matchmaking] Removing existing queue entry for ${phone} from stake ${queueStake}`);
+                this.queues[queueStake].splice(existingIdx, 1);
+            }
+        }
+
         // Store player info
         this.playerInfo[socketId] = { phone, username, stake };
 
@@ -33,11 +45,14 @@ class Matchmaking {
         }
 
         const queue = this.queues[stake];
+        console.log(`[Matchmaking] Queue for stake ${stake} has ${queue.length} players waiting`);
 
         // Check if there's already someone waiting with same stake
         if (queue.length > 0) {
             // Found a match!
             const opponent = queue.shift(); // Remove first waiting player
+
+            console.log(`[Matchmaking] MATCH FOUND: ${opponent.username} vs ${username}`);
 
             // Create game room
             const roomId = this.createGameRoom(opponent, player, stake);
@@ -53,6 +68,7 @@ class Matchmaking {
         } else {
             // No match, add to queue
             queue.push(player);
+            console.log(`[Matchmaking] Added ${username} to queue. Queue now has ${queue.length} players`);
             return {
                 matched: false,
                 position: queue.length,

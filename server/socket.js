@@ -66,7 +66,11 @@ function initSocket(io, database) {
         socket.on('queue:join', async (data) => {
             const { stake } = data;
 
+            console.log(`[Queue:Join] Received from socket ${socket.id}`);
+            console.log(`[Queue:Join] Phone: ${socket.phone}, Username: ${socket.username}, Stake: ${stake}`);
+
             if (!socket.phone) {
+                console.log(`[Queue:Join] ERROR: Not authenticated`);
                 socket.emit('error', { message: 'Not authenticated' });
                 return;
             }
@@ -75,19 +79,25 @@ function initSocket(io, database) {
 
             // Verify balance before queuing
             const user = await getUser(socket.phone);
+            console.log(`[Queue:Join] User balance: ${user ? user.balance : 'user not found'}`);
+
             if (!user || user.balance < stake) {
+                console.log(`[Queue:Join] ERROR: Insufficient balance`);
                 socket.emit('queue:error', { message: 'Insufficient balance' });
                 return;
             }
 
             // Try to find a match
+            console.log(`[Queue:Join] Calling matchmaking.joinQueue...`);
             const result = matchmaking.joinQueue(
                 { socketId: socket.id, phone: socket.phone, username: socket.username },
                 stake
             );
+            console.log(`[Queue:Join] Result:`, JSON.stringify(result));
 
             if (result.matched) {
                 console.log(`[Match] Found! ${result.player1.username} vs ${result.player2.username}`);
+                console.log(`[Match] Room: ${result.roomId}, Pot: ${result.pot}`);
 
                 // Deduct stake from both players
                 await deductBalance(result.player1.phone, stake);
@@ -95,10 +105,16 @@ function initSocket(io, database) {
 
                 // Join both players to the game room
                 const room = matchmaking.getRoom(result.roomId);
-                io.sockets.sockets.get(result.player1.socketId)?.join(result.roomId);
-                io.sockets.sockets.get(result.player2.socketId)?.join(result.roomId);
+                const p1Socket = io.sockets.sockets.get(result.player1.socketId);
+                const p2Socket = io.sockets.sockets.get(result.player2.socketId);
+
+                console.log(`[Match] P1 socket exists: ${!!p1Socket}, P2 socket exists: ${!!p2Socket}`);
+
+                p1Socket?.join(result.roomId);
+                p2Socket?.join(result.roomId);
 
                 // Notify both players
+                console.log(`[Match] Emitting match:found to both players...`);
                 io.to(result.player1.socketId).emit('match:found', {
                     roomId: result.roomId,
                     playerNumber: 1,
@@ -114,8 +130,10 @@ function initSocket(io, database) {
                     stake: result.stake,
                     pot: result.pot
                 });
+                console.log(`[Match] match:found events sent!`);
             } else {
                 // Added to queue, waiting
+                console.log(`[Queue:Join] No match, player added to queue at position ${result.position}`);
                 socket.emit('queue:waiting', {
                     position: result.position,
                     stake: result.stake
