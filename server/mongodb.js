@@ -46,9 +46,15 @@ function getConnectionString() {
                     ? srvRest.substring(srvRest.indexOf('/') + 1, srvRest.indexOf('?') > 0 ? srvRest.indexOf('?') : undefined)
                     : '';
 
-                // Add required options for Atlas
-                const baseOptions = 'ssl=true&authSource=admin&retryWrites=true&w=majority';
-                queryString = queryString ? `${baseOptions}&${queryString}` : baseOptions;
+                // Add required options for Atlas (only if not already present)
+                const requiredOptions = { ssl: 'true', authSource: 'admin', retryWrites: 'true', w: 'majority' };
+                const existingParams = new URLSearchParams(queryString);
+                for (const [key, value] of Object.entries(requiredOptions)) {
+                    if (!existingParams.has(key)) {
+                        existingParams.set(key, value);
+                    }
+                }
+                queryString = existingParams.toString();
 
                 uri = `mongodb://${srvUser}:${srvPass}@${shards.join(',')}/${dbName}?${queryString}`;
                 console.log('[MongoDB] Converted SRV to standard connection format');
