@@ -485,9 +485,13 @@ class Wallet {
     }
 
     async refresh() {
-        if (!this.phone) return;
+        if (!this.phone) return false;
         try {
             const res = await fetch(`/api/balance/${this.phone}`);
+            if (!res.ok) {
+                console.log('[Wallet] Refresh failed - API error');
+                return false;
+            }
             const data = await res.json();
             if (data.balance !== undefined) {
                 this.updateLocalUser({
@@ -498,9 +502,13 @@ class Wallet {
                     losses: data.losses
                 });
                 this.updateUI();
+                console.log('[Wallet] Session restored for', this.phone);
+                return true;
             }
+            return false;
         } catch (e) {
-            console.error(e);
+            console.error('[Wallet] Refresh error:', e);
+            return false;
         }
     }
 
