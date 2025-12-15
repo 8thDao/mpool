@@ -330,53 +330,30 @@ function initSocket(io, database) {
     console.log('[Socket] Handler initialized');
 }
 
-// Database helper functions
-function getUser(phone) {
-    return new Promise((resolve, reject) => {
-        db.get('SELECT * FROM users WHERE phone_number = ?', [phone], (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-        });
-    });
+// Database helper functions - now use MongoDB module
+async function getUser(phone) {
+    return await db.getUser(phone);
 }
 
-function deductBalance(phone, amount) {
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET balance = balance - ? WHERE phone_number = ?', [amount, phone], function (err) {
-            if (err) reject(err);
-            else {
-                // Log transaction
-                const id = Date.now().toString() + Math.random().toString(36).substring(7);
-                db.run('INSERT INTO transactions (transaction_id, phone_number, amount, type, description, status) VALUES (?, ?, ?, ?, ?, ?)',
-                    [id, phone, -amount, 'GAME_ENTRY', 'Multiplayer Game Stake', 'COMPLETED']);
-                resolve();
-            }
-        });
-    });
+async function deductBalance(phone, amount) {
+    await db.deductBalance(phone, amount);
+    await db.recordTransaction(
+        Date.now().toString() + Math.random().toString(36).substring(7),
+        phone, -amount, 'GAME_ENTRY', 'Multiplayer Game Stake', 'COMPLETED'
+    );
 }
 
-function awardWinnings(phone, amount) {
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET balance = balance + ?, wins = wins + 1 WHERE phone_number = ?', [amount, phone], function (err) {
-            if (err) reject(err);
-            else {
-                // Log transaction
-                const id = Date.now().toString() + Math.random().toString(36).substring(7);
-                db.run('INSERT INTO transactions (transaction_id, phone_number, amount, type, description, status) VALUES (?, ?, ?, ?, ?, ?)',
-                    [id, phone, amount, 'GAME_WIN', 'Multiplayer Game Winnings', 'COMPLETED']);
-                resolve();
-            }
-        });
-    });
+async function awardWinnings(phone, amount) {
+    await db.recordWin(phone, amount);
+    await db.recordTransaction(
+        Date.now().toString() + Math.random().toString(36).substring(7),
+        phone, amount, 'GAME_WIN', 'Multiplayer Game Winnings', 'COMPLETED'
+    );
 }
 
-function recordLoss(phone) {
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET losses = losses + 1 WHERE phone_number = ?', [phone], function (err) {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+async function recordLoss(phone) {
+    await db.recordLoss(phone);
 }
 
 module.exports = { initSocket };
+
