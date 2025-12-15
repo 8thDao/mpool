@@ -5,9 +5,29 @@
 
 const { MongoClient } = require('mongodb');
 
-// MongoDB connection string from environment variable
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+// MongoDB connection - supports either full URI or separate components
 const DB_NAME = process.env.DB_NAME || 'mpool';
+
+// Build connection string
+function getConnectionString() {
+    // Option 1: Full URI provided (user must URL-encode password)
+    if (process.env.MONGODB_URI) {
+        return process.env.MONGODB_URI;
+    }
+
+    // Option 2: Separate components (auto-encoded)
+    const user = process.env.MONGODB_USER;
+    const pass = process.env.MONGODB_PASS;
+    const host = process.env.MONGODB_HOST;
+
+    if (user && pass && host) {
+        const encodedPass = encodeURIComponent(pass);
+        return `mongodb+srv://${user}:${encodedPass}@${host}/${DB_NAME}?retryWrites=true&w=majority`;
+    }
+
+    // Fallback to localhost
+    return 'mongodb://localhost:27017';
+}
 
 let client = null;
 let db = null;
@@ -19,8 +39,11 @@ async function connect() {
     if (db) return db;
 
     try {
+        const connectionString = getConnectionString();
         console.log('[MongoDB] Connecting to database...');
-        client = new MongoClient(MONGODB_URI);
+        console.log('[MongoDB] Host:', connectionString.includes('@') ? connectionString.split('@')[1].split('/')[0] : 'localhost');
+
+        client = new MongoClient(connectionString);
         await client.connect();
         db = client.db(DB_NAME);
         console.log('[MongoDB] Connected successfully to:', DB_NAME);
@@ -34,6 +57,7 @@ async function connect() {
         throw error;
     }
 }
+
 
 /**
  * Create indexes for collections
