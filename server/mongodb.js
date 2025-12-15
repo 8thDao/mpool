@@ -10,9 +10,17 @@ const DB_NAME = process.env.DB_NAME || 'mpool';
 
 // Build connection string
 function getConnectionString() {
-    // Option 1: Full URI provided (user must URL-encode password)
+    // Option 1: Full URI provided (auto-encode password if needed)
     if (process.env.MONGODB_URI) {
-        return process.env.MONGODB_URI;
+        const uri = process.env.MONGODB_URI;
+        // Extract and encode password from URI to handle special characters
+        const match = uri.match(/^(mongodb(?:\+srv)?:\/\/)([^:]+):([^@]+)@(.+)$/);
+        if (match) {
+            const [, protocol, user, password, rest] = match;
+            const encodedPassword = encodeURIComponent(password);
+            return `${protocol}${user}:${encodedPassword}@${rest}`;
+        }
+        return uri;
     }
 
     // Option 2: Separate components (auto-encoded)
