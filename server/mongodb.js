@@ -4,12 +4,29 @@
  */
 
 const { MongoClient } = require('mongodb');
+const dns = require('dns').promises;
 
 // MongoDB connection - supports either full URI or separate components
 const DB_NAME = process.env.DB_NAME || 'mpool';
 
-// Build connection string
-function getConnectionString() {
+/**
+ * Resolve SRV records to get actual MongoDB shard hostnames
+ */
+async function resolveSrvRecords(host) {
+    try {
+        const srvRecords = await dns.resolveSrv(`_mongodb._tcp.${host}`);
+        console.log('[MongoDB] Resolved SRV records:', srvRecords.map(r => r.name).join(', '));
+        return srvRecords.map(r => `${r.name}:${r.port}`);
+    } catch (error) {
+        console.log('[MongoDB] SRV resolution failed:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Build connection string - handles password encoding and SRV conversion
+ */
+async function getConnectionString() {
     // Option 1: Full URI provided (auto-encode password if needed)
     if (process.env.MONGODB_URI) {
         let uri = process.env.MONGODB_URI;
@@ -23,66 +40,60 @@ function getConnectionString() {
         }
 
         // Convert mongodb+srv to standard mongodb format for Railway compatibility
-        // This avoids DNS SRV lookup issues on some hosting platforms
         if (uri.startsWith('mongodb+srv://')) {
             const srvMatch = uri.match(/^mongodb\+srv:\/\/([^:]+):([^@]+)@([^\/]+)(.*)$/);
             if (srvMatch) {
                 const [, srvUser, srvPass, srvHost, srvRest] = srvMatch;
-                // Extract cluster name from host (e.g., "cluster0" from "cluster0.zeymwlz.mongodb.net")
-                const hostParts = srvHost.split('.');
-                const clusterName = hostParts[0];
-                const region = hostParts.slice(1).join('.');
 
-                // Build standard connection with shard nodes
-                const shards = [
-                    `${clusterName}-shard-00-00.${region}:27017`,
-                    `${clusterName}-shard-00-01.${region}:27017`,
-                    `${clusterName}-shard-00-02.${region}:27017`
-                ];
+                // Try to resolve actual SRV records
+                const shards = await resolveSrvRecords(srvHost);
 
-                // Parse query string or use defaults
-                let queryString = srvRest.includes('?') ? srvRest.substring(srvRest.indexOf('?') + 1) : '';
-                const dbName = srvRest.includes('/') && srvRest.indexOf('/') < srvRest.indexOf('?')
-                    ? srvRest.substring(srvRest.indexOf('/') + 1, srvRest.indexOf('?') > 0 ? srvRest.indexOf('?') : undefined)
-                    : '';
+                if (shards && shards.length > 0) {
+                    // Parse query string
+                    let queryString = srvRest.includes('?') ? srvRest.substring(srvRest.indexOf('?') + 1) : '';
+                    const dbName = srvRest.includes('/') && srvRest.indexOf('/') < srvRest.indexOf('?')
+                        ? srvRest.substring(srvRest.indexOf('/') + 1, srvRest.indexOf('?') > 0 ? srvRest.indexOf('?') : undefined)
+                        : '';
 
-                // Add required options for Atlas (only if not already present)
-                const requiredOptions = { ssl: 'true', authSource: 'admin', retryWrites: 'true', w: 'majority' };
-                const existingParams = new URLSearchParams(queryString);
-                for (const [key, value] of Object.entries(requiredOptions)) {
-                    if (!existingParams.has(key)) {
-                        existingParams.set(key, value);
+                    // Add required options for Atlas (only if not already present)
+                    const requiredOptions = { ssl: 'true', tls: 'true', authSource: 'admin', retryWrites: 'true', w: 'majority' };
+                    const existingParams = new URLSearchParams(queryString);
+                    for (const [key, value] of Object.entries(requiredOptions)) {
+                        if (!existingParams.has(key)) {
+                            existingParams.set(key, value);
+                        }
                     }
-                }
-                queryString = existingParams.toString();
+                    queryString = existingParams.toString();
 
-                uri = `mongodb://${srvUser}:${srvPass}@${shards.join(',')}/${dbName}?${queryString}`;
-                console.log('[MongoDB] Converted SRV to standard connection format');
+                    uri = `mongodb://${srvUser}:${srvPass}@${shards.join(',')}/${dbName}?${queryString}`;
+                    console.log('[MongoDB] Converted SRV to standard connection format');
+                } else {
+                    // If SRV resolution fails, try the original URI (might work on some platforms)
+                    console.log('[MongoDB] Using original SRV URI');
+                }
             }
         }
 
         return uri;
     }
 
-    // Option 2: Separate components (auto-encoded) - use standard format
+    // Option 2: Separate components (auto-encoded)
     const user = process.env.MONGODB_USER;
     const pass = process.env.MONGODB_PASS;
     const host = process.env.MONGODB_HOST;
 
     if (user && pass && host) {
         const encodedPass = encodeURIComponent(pass);
-        // Convert to standard format for Railway compatibility
-        const hostParts = host.split('.');
-        const clusterName = hostParts[0];
-        const region = hostParts.slice(1).join('.');
 
-        const shards = [
-            `${clusterName}-shard-00-00.${region}:27017`,
-            `${clusterName}-shard-00-01.${region}:27017`,
-            `${clusterName}-shard-00-02.${region}:27017`
-        ];
+        // Try to resolve SRV records
+        const shards = await resolveSrvRecords(host);
 
-        return `mongodb://${user}:${encodedPass}@${shards.join(',')}/${DB_NAME}?ssl=true&authSource=admin&retryWrites=true&w=majority`;
+        if (shards && shards.length > 0) {
+            return `mongodb://${user}:${encodedPass}@${shards.join(',')}/${DB_NAME}?ssl=true&tls=true&authSource=admin&retryWrites=true&w=majority`;
+        }
+
+        // Fallback to SRV format
+        return `mongodb+srv://${user}:${encodedPass}@${host}/${DB_NAME}?retryWrites=true&w=majority`;
     }
 
     // Fallback to localhost
@@ -99,7 +110,7 @@ async function connect() {
     if (db) return db;
 
     try {
-        const connectionString = getConnectionString();
+        const connectionString = await getConnectionString();
         console.log('[MongoDB] Connecting to database...');
         console.log('[MongoDB] Host:', connectionString.includes('@') ? connectionString.split('@')[1].split('/')[0] : 'localhost');
 
